@@ -25,7 +25,9 @@ def _verify_signature(body: bytes, signature_header: str) -> bool:
     if not signature_header or not signature_header.startswith("sha256="):
         return False
     expected = hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature_header[7:])
+    received = signature_header[7:]
+    # constant-time compare to prevent timing attacks
+    return hmac.compare_digest(expected, received)
 
 
 @app.get("/webhook")

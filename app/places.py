@@ -31,6 +31,12 @@ async def autocomplete(query: str) -> list[dict]:
     return []
 
 async def get_coords(place_id: str) -> tuple[float, float]:
-    """place_id is now 'lat,lng' — just parse it."""
-    lat, lng = place_id.split(",")
-    return float(lat), float(lng)
+    """place_id is 'lat,lng' — parse and validate."""
+    try:
+        parts = place_id.split(",")
+        lat, lng = float(parts[0]), float(parts[1])
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            raise ValueError("Out of range")
+        return lat, lng
+    except Exception:
+        raise ValueError(f"Invalid place_id: {place_id!r}")

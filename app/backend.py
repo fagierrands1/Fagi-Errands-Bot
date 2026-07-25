@@ -118,14 +118,16 @@ async def get_client_orders(client_phone: str) -> list:
     headers = await _auth_headers()
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(
-            f"{_base()}/api/orders/?client_phone={client_phone}",
+            f"{_base()}/api/orders/",
+            params={"client_phone": client_phone},
             headers=headers,
         )
         if resp.status_code == 401:
             r.delete(TOKEN_KEY)
             headers = await _auth_headers()
             resp = await client.get(
-                f"{_base()}/api/orders/?client_phone={client_phone}",
+                f"{_base()}/api/orders/",
+                params={"client_phone": client_phone},
                 headers=headers,
             )
         data = resp.json()
@@ -133,6 +135,8 @@ async def get_client_orders(client_phone: str) -> list:
 
 
 async def get_order_status(order_id: int) -> dict:
+    if not isinstance(order_id, int) or order_id <= 0:
+        return {}
     headers = await _auth_headers()
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.get(
