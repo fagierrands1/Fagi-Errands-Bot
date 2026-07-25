@@ -94,7 +94,7 @@ async def route(phone: str, msg_type: str, message: dict, client_name: str = "")
             set_state(phone, WELCOME_MENU)
             await send_welcome(phone)
         elif body:
-            from llm import triage
+            from .llm import triage
             reply = await triage(body)
             if reply.startswith("ACTION:"):
                 clear_session(phone)
@@ -232,8 +232,8 @@ async def _agent_dispatch(agent: str, msg_type: str, message: dict):
 
 async def _handle_price_enquiry(phone: str, body: str):
     """Extract two locations from free text, geocode them, calculate price, reply."""
-    from places import autocomplete, get_coords
-    from backend import calculate_pricing
+    from .places import autocomplete, get_coords
+    from .backend import calculate_pricing
 
     from groq import Groq
     import json as _json
@@ -300,7 +300,7 @@ async def _handle_price_enquiry(phone: str, body: str):
 
 async def _send_clarify_list(phone: str, not_found: str, found_preds: list, found_side: str, flow: str):
     """Show suggestions for the found side and ask user to clarify the not-found side."""
-    from whatsapp import send_list
+    from .whatsapp import send_list
     # Cache found preds
     for i, p in enumerate(found_preds):
         cache_set(phone, f"{flow}_{found_side}_{i}", p["id"])
@@ -312,8 +312,8 @@ async def _send_clarify_list(phone: str, not_found: str, found_preds: list, foun
 
 
 async def _finish_price(phone: str, pickup_pred: dict, delivery_pred: dict):
-    from places import get_coords
-    from backend import calculate_pricing
+    from .places import get_coords
+    from .backend import calculate_pricing
     try:
         pickup_lat, pickup_lng = await get_coords(pickup_pred["id"])
         delivery_lat, delivery_lng = await get_coords(delivery_pred["id"])
@@ -341,7 +341,7 @@ async def _finish_price(phone: str, pickup_pred: dict, delivery_pred: dict):
 
 
 async def _finish_fast_book(phone: str, pickup_pred: dict, delivery_pred: dict):
-    from places import get_coords
+    from .places import get_coords
     pickup_lat, pickup_lng = await get_coords(pickup_pred["id"])
     delivery_lat, delivery_lng = await get_coords(delivery_pred["id"])
     cache_set(phone, "pickup_lat", str(pickup_lat))
@@ -408,7 +408,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
             ]
             if orders:
                 await send_message(phone, _format_orders_text(orders))
-                from whatsapp import send_buttons
+                from .whatsapp import send_buttons
                 await send_buttons(phone,
                     "What would you like to do?",
                     [("status_book", "🛵 Book Another"), ("3", "🤝 Talk to Agent")]
@@ -430,7 +430,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
         elif body == "6":
             await send_rates(phone)
         elif msg_type == "text" and body:
-            from llm import triage
+            from .llm import triage
             intent = await triage(body)
             print(f"[LLM] body={repr(body)} intent={repr(intent)}")
             # Normalize — extract ACTION even if LLM added extra text
@@ -464,7 +464,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
                 ]
                 if orders:
                     await send_message(phone, _format_orders_text(orders))
-                    from whatsapp import send_buttons
+                    from .whatsapp import send_buttons
                     await send_buttons(phone, "What would you like to do?",
                         [("status_book", "🛵 Book Another"), ("3", "🤝 Talk to Agent")])
                 else:
@@ -490,7 +490,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
             await send_session_ended(phone); await send_welcome(phone)
         else:
             # They said something else — let LLM handle but keep quote context
-            from llm import triage
+            from .llm import triage
             intent = await triage(body)
             action = next((t for t in intent.split() if t.startswith("ACTION:")), None)
             if action == "ACTION:book":
@@ -835,7 +835,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
                 f"📦 Item: {item_description}\n"
                 f"👤 Receiver: {receiver_name} ({receiver_phone})"
             )
-            from whatsapp import send_buttons
+            from .whatsapp import send_buttons
             await send_buttons(agent_phone,
                 "Manage this order:",
                 [
@@ -893,7 +893,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
         elif body == "3":
             await _handoff(phone, f"Agent request with {len(orders)} active order(s)")
         elif msg_type == "text" and body:
-            from llm import triage
+            from .llm import triage
             intent = await triage(body)
             action = next((t for t in intent.split() if t.startswith("ACTION:")), None)
             if action == "ACTION:book":
@@ -959,7 +959,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
             except Exception:
                 o = None
             if o:
-                from whatsapp import send_buttons
+                from .whatsapp import send_buttons
                 await send_buttons(phone,
                     f"📦 *Order #{o['id']}*\n"
                     f"📍 {o['pickup'][:40]}\n"
@@ -996,7 +996,7 @@ def _format_orders_text(orders: list) -> str:
 
 
 async def _send_order_menu(phone: str, order_count: int = 1):
-    from whatsapp import send_buttons
+    from .whatsapp import send_buttons
     buttons = [("track_order", "📍 Track My Order")]
     if order_count < 2:
         buttons.append(("new_order", "➕ Place Another"))
@@ -1038,7 +1038,7 @@ async def _build_invoice(phone: str):
         f"● 📏 Distance: {distance} km\n"
         f"● 💵 Delivery Fee: KES {price}"
     )
-    from whatsapp import send_buttons
+    from .whatsapp import send_buttons
     await send_buttons(phone,
         "Confirm your booking:",
         [
