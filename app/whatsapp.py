@@ -1,17 +1,10 @@
 import httpx, os
 
-_TOKEN = None
-_PHONE_ID = None
-_WA_URL = None
-
-
 def _wa_headers() -> tuple[str, dict]:
-    global _TOKEN, _PHONE_ID, _WA_URL
-    if _TOKEN is None:
-        _TOKEN = os.getenv("WHATSAPP_TOKEN", "")
-        _PHONE_ID = os.getenv("PHONE_NUMBER_ID", "")
-        _WA_URL = f"https://graph.facebook.com/v19.0/{_PHONE_ID}/messages"
-    return _WA_URL, {"Authorization": f"Bearer {_TOKEN}", "Content-Type": "application/json"}
+    token = os.getenv("WHATSAPP_TOKEN", "")
+    phone_id = os.getenv("PHONE_NUMBER_ID", "")
+    url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
+    return url, {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
 async def send_image(to: str, media_id: str):
