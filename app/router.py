@@ -920,6 +920,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
             else:
                 await send_message(phone, intent)
         else:
+            # non-text (button tap etc.) with no matching handler — show menu
             await _send_order_menu(phone, len(orders))
 
     elif state == CHECKING_STATUS:
@@ -972,7 +973,33 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
                     ]
                 )
         else:
-            await send_invalid(phone)
+            from .llm import triage
+            intent = await triage(body)
+            action = next((t for t in intent.split() if t.startswith("ACTION:")), None)
+            if action == "ACTION:status":
+                local_phone = "0" + phone[-9:]
+                from datetime import date
+                raw_orders = await get_client_orders(local_phone)
+                today = date.today().isoformat()
+                orders = [
+                    _format_order(o) for o in raw_orders
+                    if o.get("status") not in ("Cancelled", "Completed", "Draft")
+                    and (o.get("created_at", "") or "")[:10] == today
+                ]
+                if orders:
+                    await send_message(phone, _format_orders_text(orders))
+                    await _send_order_menu(phone, len(orders))
+                else:
+                    await send_no_status(phone)
+            elif action == "ACTION:book":
+                set_state(phone, AWAITING_FAST_BOOK_LOCATIONS)
+                await send_message(phone,
+                    "🛵 *Quick Book*\n\nReply with:\n*Pickup location, Delivery location*\n\nExample: _Westlands, Karen_"
+                )
+            elif action == "ACTION:agent":
+                await _handoff(phone, f"Agent request from status screen")
+            else:
+                await send_message(phone, intent)
 
 
 def _format_orders_text(orders: list) -> str:
