@@ -94,7 +94,7 @@ async def route(phone: str, msg_type: str, message: dict, client_name: str = "")
             set_state(phone, WELCOME_MENU)
             await send_welcome(phone)
         elif body:
-            from .llm import triage
+            from .llm_router import triage
             reply = await triage(body)
             if reply.startswith("ACTION:"):
                 clear_session(phone)
@@ -430,7 +430,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
         elif body == "6":
             await send_rates(phone)
         elif msg_type == "text" and body:
-            from .llm import triage
+            from .llm_router import triage
             intent = await triage(body)
             print(f"[LLM] body={repr(body)} intent={repr(intent)}")
             # Normalize — extract ACTION even if LLM added extra text
@@ -490,7 +490,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
             await send_session_ended(phone); await send_welcome(phone)
         else:
             # They said something else — let LLM handle but keep quote context
-            from .llm import triage
+            from .llm_router import triage
             intent = await triage(body)
             action = next((t for t in intent.split() if t.startswith("ACTION:")), None)
             if action == "ACTION:book":
@@ -893,7 +893,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
         elif body == "3":
             await _handoff(phone, f"Agent request with {len(orders)} active order(s)")
         elif msg_type == "text" and body:
-            from .llm import triage
+            from .llm_router import triage
             intent = await triage(body)
             action = next((t for t in intent.split() if t.startswith("ACTION:")), None)
             if action == "ACTION:book":
@@ -973,7 +973,7 @@ async def _dispatch(phone: str, msg_type: str, message: dict, state: str):
                     ]
                 )
         else:
-            from .llm import triage
+            from .llm_router import triage
             intent = await triage(body)
             action = next((t for t in intent.split() if t.startswith("ACTION:")), None)
             if action == "ACTION:status":
