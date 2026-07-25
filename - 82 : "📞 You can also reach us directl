@@ -1,0 +1,1026 @@
++     69:     # Inactivity check — if >60s since last message and mid-flow, reset to menu
++     70:     last_active = r.get(f"last_active:{phone}")
++     71:     now = int(time.time())
++     72:     if last_active and state not in (WELCOME_MENU, HAND_OFF_TO_HUMAN):
++     73:         if now - int(last_active) > 60:
++     74:             clear_session(phone)
++     75:             set_state(phone, WELCOME_MENU)
++     76:             await send_message(phone, "⏱ Your session timed out. Here's the main menu:")
++     77:             await send_welcome(phone)
++     78:             r.set(f"last_active:{phone}", now, ex=1800)
++     79:             return
++     80:     r.set(f"last_active:{phone}", now, ex=1800)
++     81: 
+  68, 82:     # Agent lock — skip automation entirely unless they type cancel
+  69, 83:     if state == HAND_OFF_TO_HUMAN:
+  70, 84:         body = message.get("text", {}).get("body", "").strip().lower() if msg_type == "text" else ""
+  71, 85:         if body == "cancel":
+  72, 86:             clear_session(phone)
+  73, 87:             set_state(phone, WELCOME_MENU)
+  74, 88:             await send_welcome(phone)
+  75, 89:         return
+  76, 90: 
+  77, 91:     if state == RESUME_DRAFT_PROMPT:
+  78, 92:         clear_session(phone)
+  79, 93:         set_state(phone, WELCOME_MENU)
+  80, 94:         await send_welcome(phone)
+  81, 95:         return
+  82, 96: 
+  83, 97:     await _dispatch(phone, msg_type, message, state)
+
+Updating: router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Done. Here's how it works:
+
+• Every message updates a last_active:{phone} timestamp in Redis
+• On the next message, if it's been >60 seconds since the last one and they're mid-flow, session resets and the main menu is sent
+• WELCOME_MENU and HAND_OFF_TO_HUMAN are excluded — no point resetting if they're already at the menu or with an agent
+
+One thing to note: this is trigger-based (fires when the next message arrives), not a true background timer. A true proactive timer would need a separate scheduler like 
+APScheduler or a cron job. But for the use case of "client comes back after going blank" — this covers it perfectly.
+
+> make sure whatwver is texted after the message of connecting you to an agent make sure whatevr it texted brings the main menu message, and also 
+
+> Currently in HAND_OFF_TO_HUMAN, only "cancel" resets to menu — anything else is silently ignored. Fix it to send the welcome menu on any message.
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: router.py
+
+  82, 82:     # Agent lock — skip automation entirely unless they type cancel
+  83, 83:     if state == HAND_OFF_TO_HUMAN:
+  84, 84:         body = message.get("text", {}).get("body", "").strip().lower() if msg_type == "text" else ""
+  85, 85:         if body == "cancel":
+  86, 86:             clear_session(phone)
+  87, 87:             set_state(phone, WELCOME_MENU)
+  88, 88:             await send_welcome(phone)
++     89:         else:
++     90:             await send_welcome(phone)
+  89, 91:         return
+
+Updating: router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Done. Now anything the client texts after the "Connecting you to an agent" message will show the main menu. You mentioned "and also" — what's the second thing?
+
+> download out app is option is not giving the expected results
+
+> What's the expected result? Is the link wrong, the app not found on Play Store, or should it open something different (like a direct APK link or App Store link too)?
+
+> is it posible we add a direct buton that when clicked utomatically open the playstore ap, whats needed and what are the steps to achive this
+
+> WhatsApp doesn't support deep links or custom button actions — buttons can only send a text reply back to the bot. So a button can't directly open the Play Store.
+
+What you can do is send the Play Store direct link as a plain text message. When WhatsApp renders a Play Store URL, it shows a rich preview with the app name, icon, and an 
+"Open" button that takes them straight to the app page.
+
+The key is using the direct app link format:
+https://play.google.com/store/apps/details?id=com.yourpackagename
+
+Not the search URL you currently have. The search URL (?q=fagi+errands) won't give a rich preview and may not find the right app.
+
+Steps:
+1. Get your app's package name from the Play Store URL (e.g. com.fagierrands.app)
+2. Replace the current link in router.py
+
+What's the package name / Play Store URL of the Fagi Errands app?
+
+> com.fagierrands.fagierrandsservices
+
+
+
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: router.py
+
+  282, 282:         elif body == "4":
+  283, 283:             await send_message(phone,
+  284, 284:                 "📱 *Download Fagi Errands App*\n\n"
+- 285     :                 "https://play.google.com/store/search?q=fagi+errands"
++      285:                 "https://play.google.com/store/apps/details?id=com.fagierrands.fagierrandsservices"
+  286, 286:             )
+
+Updating: router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Done. WhatsApp will now render a rich preview for the direct app link — client taps it and lands straight on the Fagi Errands page in the Play Store.
+
+> BUT WE CAN DO THIS com.fagierrands.fagierrandsservices
+
+
+
+
+> but we can do this??\
+Yes, you can redirect users to the Google Play Store by using a "Visit Website" button in your WhatsApp message template.
+
+Open your template in the WhatsApp Manager.
+
+Select the Visit Website button type.
+
+Enter your full Google Play Store URL in the link field.
+
+> That's for WhatsApp Message Templates (the kind businesses send as outbound marketing messages), not for conversational/session messages like what this bot sends.
+
+Templates are pre-approved by Meta and support CTA buttons like "Visit Website" that open a URL directly. But:
+
+• They require Meta approval (24-48hrs)
+• They're meant for notifications sent outside the 24hr window
+• You can't dynamically trigger them mid-conversation the same way
+
+For your bot's conversational flow (within the 24hr window), plain text with the direct Play Store link is the best you can do — and it works well since WhatsApp auto-
+generates a rich preview for Play Store links.
+
+If you want, I can set up a template message for the app download that gets sent as a proper CTA button — but it would be a separate flow, not inline with the menu. Worth it?
+
+> not worth it
+
+> Fair enough. The direct link we already set is the best option then. What else do you want to work on?
+
+> whats reming think of features we can add, anything and crazy whatever, list and recomen
+
+> Here's everything I can think of, ranked by impact:
+
+High Impact / Easy
+• 📸 Photo of package — client sends a photo before booking, forwarded to rider
+• ⭐ Rating prompt — after Completed, ask client to rate the delivery 1-5
+• 🔁 Repeat last order — "Book same as last time" option, pre-fills all details
+• 📣 Broadcast messages — agent sends a message to all active clients at once (promo, delay notice)
+
+High Impact / Medium effort
+• 🕐 Scheduled pickup — client picks a time slot instead of immediate dispatch
+• 💬 Rider live updates — rider texts a number, bot forwards update to client ("Rider is 5 mins away")
+• 📍 Live tracking link — send a Google Maps sharing link when rider is assigned
+• 💳 M-Pesa payment — wire up the mpesa.py that's already there but unused
+
+Nice to Have
+• 🌍 Language toggle — Swahili / English switch stored per user in Redis
+• 📊 Agent dashboard summary — agent texts "stats" and gets today's order count, revenue, pending
+• 🔔 Reminder nudge — if client starts booking but abandons mid-flow, send a reminder after X minutes
+• 🏷️ Promo codes — client enters a code at invoice step for a discount
+
+Wild / Crazy
+• 🤖 AI triage — use an LLM to handle free-text questions before falling back to the menu
+• 📦 Multi-drop — one booking, multiple delivery stops, price calculated per leg
+• 👥 Referral system — client gets a code, shares it, earns credit on next order
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+The ones already half-built in your codebase: M-Pesa (mpesa.py exists), rating (just needs a state + message after Completed status).
+
+Which of these interests you?
+
+> • 🔁 Repeat last order — "Book same as last time" option, pre-fills all details\
+• 📣 Broadcast messages — agent sends a message to all active clients at once (promo, delay notice)\
+• 💬 Rider live updates — rider texts a number, bot forwards update to client ("Rider is 5 mins away")\
+• 🕐 Scheduled pickup — client picks a time slot instead of immediate dispatch\
+• 📍 Live tracking link — send a Google Maps sharing link when rider is assigned\
+• 💳 M-Pesa payment — wire up the mpesa.py that's already there but unused\
+• 🌍 Language toggle — Swahili / English switch stored per user in Redis\
+• 🔔 Reminder nudge — if client starts booking but abandons mid-flow, send a reminder after X minutes\
+• 🤖 AI triage — use an LLM to handle free-text questions before falling back to the menu\
+the other sugestions i have not neglected them just that they will need huge backend chnages that im not intrested on at the moment, lets talk about these ones i have shared o
+ne by one so we see how we can implent them, how can we impment repeat last order, and how best can we build this
+
+> Here's how repeat last order works:
+
+What we store
+After a successful order, save the key details in Redis against the phone:
+• pickup name + coords
+• delivery name + coords
+• load type
+• receiver phone
+
+Where it shows
+Add it as an option in the welcome menu — but only if a previous order exists for that user. So new users never see it, returning users do.
+
+The flow
+Welcome Menu
+  └─ "🔁 Repeat Last Order"
+        └─ Show invoice summary (pre-filled) → Confirm / Cancel
+
+Skips load type, pickup, delivery, receiver steps entirely. Goes straight to invoice confirmation.
+
+What needs changing
+1. router.py — after successful order creation, save last order details to Redis
+2. messages.py — add a new welcome menu that includes the repeat option (conditionally)
+3. router.py — handle the new menu option, load cached details, jump straight to _build_invoice
+
+One decision to make: do you want receiver details also repeated (same receiver phone), or always ask for receiver phone fresh each time?
+
+> since most of our orders dont go to same place often it might be dificult to impment this and we cana chive the idea and impmenet it on a later time
+
+> Makes sense, skip it for now. 
+
+Next up — 📣 Broadcast messages. How it would work:
+
+Agent texts the bot something like:
+broadcast: Riders are delayed today due to traffic. We apologize for any inconvenience!
+
+
+Bot finds all phones that have been active today (from last_active:* keys in Redis) and sends them the message.
+
+Simple, no backend changes needed — pure Redis + WhatsApp. Want to implement this one?
+
+> yes
+
+
+
+
+🛠️  Using tool: fs_read (trusted)
+ ⋮ 
+ ● Searching: /home/m/Desktop/whatsappbot/router.py for pattern: async def _agent_dispatch
+ ✓ Found 1 matches for pattern 'async def _agent_dispatch' in /home/m/Desktop/whatsappbot/router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+
+
+
+🛠️  Using tool: fs_read (trusted)
+ ⋮ 
+ ● Reading file: /home/m/Desktop/whatsappbot/router.py, from line 117 to 130
+ ✓ Successfully read 534 bytes from /home/m/Desktop/whatsappbot/router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: router.py
+
+  117, 117: async def _agent_dispatch(agent: str, msg_type: str, message: dict):
+  118, 118:     body = ""
+  119, 119:     order_id = None
+  120, 120: 
+  121, 121:     if msg_type == "text":
+  122, 122:         body = message.get("text", {}).get("body", "").strip()
+  123, 123:     elif msg_type == "interactive":
+  124, 124:         interactive = message.get("interactive", {})
+  125, 125:         if interactive.get("type") == "list_reply":
+  126, 126:             body = interactive["list_reply"]["id"]
+  127, 127:         elif interactive.get("type") == "button_reply":
+  128, 128:             body = interactive["button_reply"]["id"]
+  129, 129: 
+- 130     :     # Agent selects an order to manage
++      130:     # Broadcast to all active clients today
++      131:     if body.lower().startswith("broadcast:"):
++      132:         text = body[len("broadcast:"):].strip()
++      133:         if not text:
++      134:             await send_message(agent, "⚠️ Broadcast message is empty.")
++      135:             return
++      136:         phones = [
++      137:             key.replace("last_active:", "")
++      138:             for key in r.scan_iter("last_active:*")
++      139:         ]
++      140:         agent_bare = agent.lstrip("+")
++      141:         phones = [p for p in phones if p != agent_bare]
++      142:         count = 0
++      143:         for phone in phones:
++      144:             await send_message(phone, f"📣 *Fagi Errands Update*\n\n{text}")
++      145:             count += 1
++      146:         await send_message(agent, f"✅ Broadcast sent to {count} client(s).")
++      147:         return
++      148: 
++      149:     # Agent selects an order to manage
+
+Updating: router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Done. Agent usage:
+
+broadcast: Riders are delayed today due to traffic. We apologize for any inconvenience!
+
+
+• Finds all phones with a last_active:* key in Redis (anyone who has ever messaged the bot)
+• Skips the agent's own number
+• Sends each one: 📣 *Fagi Errands Update*\n\n<message>
+• Confirms back to agent with count: ✅ Broadcast sent to 12 client(s).
+
+> INFO:     Will watch for changes in these directories: ['/home/m/Desktop/whatsappbot']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [27484] using StatReload
+INFO:     Started server process [27487]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+[SEND] to=254704291657 status=200
+[SEND list] to=254704291657 status=200 {"messaging_product":"whatsapp","contacts":[{"input":"254704291657","wa_id":"254704291657"}],"messages":[{"id":"wamid.HBgMMjU0NzA0MjkxNjU3FQIAERgSQUMxRDI2RTg1NTkzNkM1MDc2AA=="}]}
+INFO:     2a03:2880:22ff:6:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:2ff:5f:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:2ff:4e:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:12ff:40:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:12ff:3:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:2ff:43:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:2ff:::0 - "POST /webhook HTTP/1.1" 200 OK
+[SEND] to=254704291657 status=200
+INFO:     2a03:2880:22ff:1:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:10ff:10:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:21ff:5:::0 - "POST /webhook HTTP/1.1" 200 OK
+[SEND list] to=254704291657 status=200 {"messaging_product":"whatsapp","contacts":[{"input":"254704291657","wa_id":"254704291657"}],"messages":[{"id":"wamid.HBgMMjU0NzA0MjkxNjU3FQIAERgSODY4M0MzQTVCMzZDOTIwQ0ZEAA=="}]}
+INFO:     2a03:2880:2ff:4b:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:21ff:8:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:22ff:46:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:22ff:43:::0 - "POST /webhook HTTP/1.1" 200 OK
+[SEND] to=254704291657 status=200
+INFO:     2a03:2880:22ff:45:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:2ff:7e:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:10ff:13:::0 - "POST /webhook HTTP/1.1" 200 OK
+[SEND list] to=254704291657 status=200 {"messaging_product":"whatsapp","contacts":[{"input":"254704291657","wa_id":"254704291657"}],"messages":[{"id":"wamid.HBgMMjU0NzA0MjkxNjU3FQIAERgSQzdDNjUwNUU2OTM0MkU5MUE0AA=="}]}
+INFO:     2a03:2880:10ff:55:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:22ff:4f:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:21ff:43:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:12ff:1:::0 - "POST /webhook HTTP/1.1" 200 OK
+[SEND] to=254704291657 status=200
+INFO:     2a03:2880:22ff:56:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:22ff:57:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:22ff:4f:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:22ff:73:::0 - "POST /webhook HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'router.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [27487]
+INFO:     Started server process [30656]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     2a03:2880:22ff:4f:::0 - "POST /webhook HTTP/1.1" 200 OK
+[SEND] to=254739224825 status=200
+INFO:     2a03:2880:21ff:45:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:10ff:59:::0 - "POST /webhook HTTP/1.1" 200 OK
+INFO:     2a03:2880:10ff:4e:::0 - "POST /webhook HTTP/1.1" 200 OK
+
+
+> Logs look clean — no errors, all sends returning status=200. The reload picked up the router.py changes fine.
+
+I can see one send to 254739224825 (the agent number) after the reload — that's the broadcast or agent dispatch working.
+
+Everything running good. Which feature do you want to tackle next from the list?
+• 💬 Rider live updates
+• 🕐 Scheduled pickup
+• 📍 Live tracking link
+• 💳 M-Pesa payment
+• 🌍 Language toggle (Swahili/English)
+• 🔔 Reminder nudge
+
+> yeah just that i have tried sedning broadcasr message and it tell me sent to 0 clients which is weird yet i have had a client who has been active today
+
+> The issue is r.scan_iter("last_active:*") — the Redis keys are stored as last_active:{phone} but scan_iter returns the full key string. Let me check how the key is actually 
+stored:
+
+
+🛠️  Using tool: fs_read (trusted)
+ ⋮ 
+ ● Searching: /home/m/Desktop/whatsappbot/router.py for pattern: last_active
+ ✓ Found 7 matches for pattern 'last_active' in /home/m/Desktop/whatsappbot/router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> The key format and extraction look correct. The real problem is the last_active keys only get set when a client messages after this feature was added — any client active 
+before today's deployment has no last_active key in Redis yet.
+
+
+🛠️  Using tool: execute_bash
+ ⋮ 
+ ● I will run the following shell command: 
+cd /home/m/Desktop/whatsappbot && source venv/bin/activate && python3 -c "import redis; r = redis.Redis(host='localhost', port=6379, decode_responses=True); keys = list(r.scan_iter('last_active:*')); print('last_active keys:', keys); state_keys = list(r.scan_iter('state:*')); print('state keys:', state_keys)"
+ ⋮ 
+ ↳ Purpose: Check what keys exist in Redis
+
+
+Allow this action? Use 't' to trust (always allow) this tool for the session. [y/n/t]:
+
+> t
+
+last_active keys: []
+state keys: []
+ ⋮ 
+ ● Completed in 0.166s
+
+
+> Confirmed — no last_active keys exist yet because the client messaged before we added that tracking code. Also no state keys, meaning the session has expired.
+
+The fix: broaden the broadcast to also pick up phones from any Redis key (like client_name:*) so it catches clients who were active before the last_active feature existed.
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: router.py
+
+- 136     :         phones = [
+- 137     :             key.replace("last_active:", "")
+- 138     :             for key in r.scan_iter("last_active:*")
+- 139     :         ]
++      136:         phones = set()
++      137:         for key in r.scan_iter("last_active:*"):
++      138:             phones.add(key.replace("last_active:", ""))
++      139:         for key in r.scan_iter("client_name:*"):
++      140:             phones.add(key.replace("client_name:", ""))
+  140, 141:         agent_bare = agent.lstrip("+")
+  141, 142:         phones = [p for p in phones if p != agent_bare]
+
+Updating: router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> But there's still a problem — client_name keys also have a 30min TTL so they expire too. The real long-term fix is to also store a permanent phone registry. Let me add that:
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: router.py
+
+   0,  0:     agent_phone = (os.getenv("AGENT_PHONE") or "").lstrip("+")
+   1,  1: 
+   2,  2:     # Inactivity check — if >60s since last message and mid-flow, reset to menu
+   3,  3:     last_active = r.get(f"last_active:{phone}")
+   4,  4:     now = int(time.time())
+   5,  5:     if last_active and state not in (WELCOME_MENU, HAND_OFF_TO_HUMAN):
+   6,  6:         if now - int(last_active) > 60:
+   7,  7:             clear_session(phone)
+   8,  8:             set_state(phone, WELCOME_MENU)
+   9,  9:             await send_message(phone, "⏱ Your session timed out. Here's the main menu:")
+  10, 10:             await send_welcome(phone)
+  11, 11:             r.set(f"last_active:{phone}", now, ex=1800)
+  12, 12:             return
+  13, 13:     r.set(f"last_active:{phone}", now, ex=1800)
++     14:     r.sadd("all_clients", phone)  # permanent registry for broadcasts
+
+Updating: router.py
+ ⋮ 
+ ● Execution failed after 0.0s:
+no occurrences of "    agent_phone = (os.getenv("AGENT_PHONE") or "").lstrip("+")
+
+    # Inactivity check — if >60s since last message and mid-flow, reset to menu
+    last_active = r.get(f"last_active:{phone}")
+    now = int(time.time())
+    if last_active and state not in (WELCOME_MENU, HAND_OFF_TO_HUMAN):
+        if now - int(last_active) > 60:
+            clear_session(phone)
+            set_state(phone, WELCOME_MENU)
+            await send_message(phone, "⏱ Your session timed out. Here's the main menu:")
+            await send_welcome(phone)
+            r.set(f"last_active:{phone}", now, ex=1800)
+            return
+    r.set(f"last_active:{phone}", now, ex=1800)" were found
+
+
+
+
+
+🛠️  Using tool: fs_read (trusted)
+ ⋮ 
+ ● Reading file: /home/m/Desktop/whatsappbot/router.py, from line 60 to 85
+ ✓ Successfully read 1087 bytes from /home/m/Desktop/whatsappbot/router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: router.py
+
+  80, 80:     r.set(f"last_active:{phone}", now, ex=1800)
+- 81    : 
+- 82    :     # Agent lock — skip automation entirely unless they type cancel
++     81:     r.sadd("all_clients", phone)  # permanent registry for broadcasts
+
+Updating: router.py
+ ⋮ 
+ ● Completed in 0.1s
+
+
+> Now update broadcast to use the permanent set:
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: router.py
+
+- 135     :         phones = set()
+- 136     :         for key in r.scan_iter("last_active:*"):
+- 137     :             phones.add(key.replace("last_active:", ""))
++      135:         phones = set(r.smembers("all_clients"))
+  138, 136:         for key in r.scan_iter("client_name:*"):
+  139, 137:             phones.add(key.replace("client_name:", ""))
+  140, 138:         agent_bare = agent.lstrip("+")
+  141, 139:         phones = [p for p in phones if p != agent_bare]
+
+Updating: router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Done. Now:
+
+• all_clients is a Redis Set (no TTL, never expires) — every phone that messages the bot gets added permanently
+• Broadcast pulls from that set + any client_name:* keys still alive in Redis as a fallback for existing clients
+• Going forward, no client will ever be missed in a broadcast
+
+The client who was active today will be added to all_clients on their next message, then broadcasts will reach them.
+
+> remove the feture to text agent whenever the client tries to check errand status as now all errands go to the db , 
+
+
+
+
+🛠️  Using tool: fs_read (trusted)
+ ⋮ 
+ ● Reading file: /home/m/Desktop/whatsappbot/router.py, from line 228 to 275
+ ✓ Successfully read 2255 bytes from /home/m/Desktop/whatsappbot/router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+
+
+
+🛠️  Using tool: fs_read (trusted)
+ ⋮ 
+ ● Reading file: /home/m/Desktop/whatsappbot/router.py, from line 275 to 305
+ ✓ Successfully read 1672 bytes from /home/m/Desktop/whatsappbot/router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: router.py
+
+  259, 259:             if orders:
+- 260     :                 client_name = cache_get(phone, "client_name") or phone
+  261, 260:                 await send_message(phone, _format_orders_text(orders))
+  262, 261:                 from whatsapp import send_buttons
+  263, 262:                 await send_buttons(phone,
+  264, 263:                     "What would you like to do?",
+  265, 264:                     [("status_book", "🛵 Book Another"), ("3", "🤝 Talk to Agent")]
+  266, 265:                 )
+- 267     :                 agent_phone = (os.getenv("AGENT_PHONE") or "").lstrip("+")
+- 268     :                 if agent_phone:
+- 269     :                     if len(orders) == 1:
+- 270     :                         o = orders[0]
+- 271     :                         from whatsapp import send_buttons
+- 272     :                         await send_buttons(agent_phone,
+- 273     :                             f"🔍 *{client_name}* (+{phone}) is checking status\n"
+- 274     :                             f"📦 Order #{o['id']} | {STATUS_LABELS.get(o['status'], o['status'])}\n"
+- 275     :                             f"📍 {o['pickup'][:35]}\n🏁 {o['delivery'][:35]}\n💵 KES {o['price']}",
+- 276     :                             [
+- 277     :                                 (f"agentstatus_{o['order_number']}", "📋 Update Status"),
+- 278     :                                 (f"agentcancel_{o['order_number']}", "❌ Cancel Order"),
+- 279     :                                 (f"agentcall_{o['order_number']}", "📞 Call Client"),
+- 280     :                             ]
+- 281     :                         )
+- 282     :                     else:
+- 283     :                         await send_list(agent_phone,
+- 284     :                             f"🔍 *{client_name}* (+{phone}) is checking their orders.\nSelect one to manage:",
+- 285     :                             "View Orders",
+- 286     :                             [{"title": "Active Orders", "rows": [
+- 287     :                                 {
+- 288     :                                     "id": f"agentorder_{o['order_number']}",
+- 289     :                                     "title": f"Order #{o['id']}"[:24],
+- 290     :                                     "description": f"{STATUS_LABELS.get(o['status'], o['status'])} | KES {o['price']}"[:72]
+- 291     :                                 }
+- 292     :                                 for o in orders
+- 293     :                             ]}]
+- 294     :                         )
+  295, 266:             else:
+  296, 267:                 await send_no_status(phone)
+
+Updating: router.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Done. Agent no longer gets notified when a client checks their errand status.
+
+> on the welcome main menu message can we add fagierrands logo and attached to the mesage
+
+> WhatsApp interactive list messages (which is what the welcome menu uses) don't support images attached to them — Meta's API doesn't allow it.
+
+What you can do is send the logo as an image message first, then immediately send the menu. The client sees the logo, then the menu right below it.
+
+Do you have the logo image file locally or a URL to it?
+
+> check downloads folder called logo its the logo i want to be added
+
+
+
+
+🛠️  Using tool: execute_bash (trusted)
+ ⋮ 
+ ● I will run the following shell command: 
+ls ~/Downloads/ | grep -i logo
+ ⋮ 
+ ↳ Purpose: Find logo file in Downloads
+
+BLUE TECH LOGO.pdf
+logo.jpeg
+ ⋮ 
+ ● Completed in 0.6s
+
+
+> Found logo.jpeg. To send it via WhatsApp API you need to either:
+
+1. Host it at a public URL — upload it somewhere (your server, S3, etc.) and use the URL directly in the API call
+2. Upload it to WhatsApp Media API — upload once, get a media_id, reuse it forever (best approach)
+
+Option 2 is better — upload once, store the media_id in .env, use it every time. Want me to write a quick script to upload the logo to WhatsApp and get the media_id, then wire
+it into send_welcome?
+
+> option 2 then
+
+
+
+
+🛠️  Using tool: execute_bash (trusted)
+ ⋮ 
+ ● I will run the following shell command: 
+cd /home/m/Desktop/whatsappbot && source venv/bin/activate && python3 -c "
+import httpx, os
+from dotenv import load_dotenv
+load_dotenv()
+
+token = os.getenv('WHATSAPP_TOKEN')
+phone_number_id = os.getenv('PHONE_NUMBER_ID')
+
+with open('/home/m/Downloads/logo.jpeg', 'rb') as f:
+    r = httpx.post(
+        f'https://graph.facebook.com/v19.0/{phone_number_id}/media',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'messaging_product': 'whatsapp'},
+        files={'file': ('logo.jpeg', f, 'image/jpeg')}
+    )
+    print(r.status_code, r.text)
+"
+
+ ⋮ 
+ ↳ Purpose: Upload logo to WhatsApp Media API
+
+200 {"id":"1734085524386031"}
+ ⋮ 
+ ● Completed in 3.464s
+
+
+> Got the media ID. Now save it to .env and update send_welcome:
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: .env
+
+- 12    : HANDLER_PHONE=0739224825
++     12: LOGO_MEDIA_ID=1734085524386031
+
+Updating: .env
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Now add an image send function to whatsapp.py and update send_welcome:
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: whatsapp.py
+
++     4: async def send_image(to: str, media_id: str):
++     5:     token = os.getenv("WHATSAPP_TOKEN")
++     6:     phone_number_id = os.getenv("PHONE_NUMBER_ID")
++     7:     url = f"https://graph.facebook.com/v19.0/{phone_number_id}/messages"
++     8:     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
++     9:     payload = {"messaging_product": "whatsapp", "to": to, "type": "image", "image": {"id": media_id}}
++    10:     async with httpx.AsyncClient(timeout=10) as client:
++    11:         r = await client.post(url, json=payload, headers=headers)
++    12:         print(f"[SEND image] to={to} status={r.status_code}")
++    13: 
++    14: 
+  4, 15: async def send_message(to: str, text: str):
+
+Updating: whatsapp.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Now update send_welcome to send the logo first:
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: messages.py
+
+- 1   : from whatsapp import send_message, send_list, send_buttons
++    1: from whatsapp import send_message, send_list, send_buttons, send_image
+  2, 2: 
+  3, 3: 
+  4, 4: async def send_welcome(phone: str):
++    5:     import os
++    6:     logo_id = os.getenv("LOGO_MEDIA_ID")
++    7:     if logo_id:
++    8:         await send_image(phone, logo_id)
+  5, 9:     await send_list(
+
+Updating: messages.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Done. Every time the welcome menu is sent, the logo image appears right above it. The media ID is stored in .env so no re-uploading needed.
+
+> the logo is very blank, can you create a prompt that let us create a clean poster that we can use in this case that include the logo i , the prompt is for gemini
+
+> Let me see the logo first:
+
+
+🛠️  Using tool: fs_read
+ ⋮ 
+ ● Reading images: /home/m/Downloads/logo.jpeg
+
+Allow this action? Use 't' to trust (always allow) this tool for the session. [y/n/t]:
+
+> t
+
+
+ ✓ Successfully read image
+ ⋮ 
+ ● Completed in 0.0s
+
+
+
+> Here's a Gemini image generation prompt:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+Create a vibrant WhatsApp welcome poster for a courier delivery brand called Fagi Errands Services. The poster should include the brand logo which features: a bold blue text 
+"Fagi Errands" with a black outline, an orange running delivery person carrying a box, a silver/grey swoosh orbit around the figure, and a yellow sparkle/star on the left 
+side. 
+
+Design a clean professional rectangular poster (portrait orientation) with:
+• A deep navy blue or dark gradient background
+• The logo prominently centered in the upper half
+• A bold tagline below the logo: "Safe. Fast. Reliable."
+• A subtext line: "Kenya's trusted errand & courier service 🛵"
+• Subtle map pin or road/city silhouette design elements in the background
+• Clean white and orange typography
+• Bottom strip with: "Available on WhatsApp 24/7"
+• Overall feel: modern, energetic, trustworthy — like a premium delivery brand
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+Paste that into Gemini and it'll generate a poster you can upload as the new welcome image. Want me to re-upload it once you have the final image?
+
+> make sure the width of the image wil be same as width of the mesage blow it
+
+> WhatsApp renders images at a fixed aspect ratio — to make the image appear the same width as the message bubble below it, the image needs to be 800 x 418 pixels (roughly 1.91
+:1 ratio). That's the landscape ratio WhatsApp uses for link previews and image messages that fill the full bubble width.
+
+Add this to the Gemini prompt:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+Canvas size: 800 x 418 pixels, landscape orientation (wide format banner)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+That way when it renders in WhatsApp, the image width matches the message bubble width perfectly.
+
+> use thi image Gemini_Generated_Image_submg3submg3subm.png
+
+
+
+
+🛠️  Using tool: execute_bash (trusted)
+ ⋮ 
+ ● I will run the following shell command: 
+find /home/m -name "Gemini_Generated_Image_submg3submg3subm.png" 2>/dev/null
+ ⋮ 
+ ↳ Purpose: Find the generated image
+
+/home/m/Downloads/Gemini_Generated_Image_submg3submg3subm.png
+ ⋮ 
+ ● Completed in 1.618s
+
+
+
+
+
+🛠️  Using tool: execute_bash (trusted)
+ ⋮ 
+ ● I will run the following shell command: 
+cd /home/m/Desktop/whatsappbot && source venv/bin/activate && python3 -c "
+import httpx, os
+from dotenv import load_dotenv
+load_dotenv()
+
+token = os.getenv('WHATSAPP_TOKEN')
+phone_number_id = os.getenv('PHONE_NUMBER_ID')
+
+with open('/home/m/Downloads/Gemini_Generated_Image_submg3submg3subm.png', 'rb') as f:
+    r = httpx.post(
+        f'https://graph.facebook.com/v19.0/{phone_number_id}/media',
+        headers={'Authorization': f'Bearer {token}'},
+        data={'messaging_product': 'whatsapp'},
+        files={'file': ('poster.png', f, 'image/png')}
+    )
+    print(r.status_code, r.text)
+"
+
+ ⋮ 
+ ↳ Purpose: Upload new poster to WhatsApp Media API
+
+200 {"id":"1065429086171534"}
+ ⋮ 
+ ● Completed in 3.295s
+
+
+
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: .env
+
+- 12    : LOGO_MEDIA_ID=1734085524386031
++     12: LOGO_MEDIA_ID=1065429086171534
+
+Updating: .env
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Done. New poster uploaded and .env updated with the new media ID. It'll show on the next welcome message sent.
+
+> still geting the same old image logo
+
+> The server needs to reload to pick up the new .env value. Since uvicorn is running with auto-reload, just save a whitespace change to any file to trigger it — or restart 
+manually:
+
+
+🛠️  Using tool: execute_bash (trusted)
+ ⋮ 
+ ● I will run the following shell command: 
+touch /home/m/Desktop/whatsappbot/router.py
+ ⋮ 
+ ↳ Purpose: Trigger uvicorn reload
+
+ ⋮ 
+ ● Completed in 0.5s
+
+
+> That'll trigger a reload. Try sending a message to the bot now — the new poster should appear.
+
+> remove the image it not as good as i want it to be
+
+
+
+
+🛠️  Using tool: fs_write (trusted)
+ ⋮ 
+ ● Path: messages.py
+
+  4, 4: async def send_welcome(phone: str):
+- 5   :     import os
+- 6   :     logo_id = os.getenv("LOGO_MEDIA_ID")
+- 7   :     if logo_id:
+- 8   :         await send_image(phone, logo_id)
+  9, 5:     await send_list(
+
+Updating: messages.py
+ ⋮ 
+ ● Completed in 0.0s
+
+
+> Done. Welcome menu is back to text only. Whenever you have a better image ready just let me know and we'll add it back in.
+
+> lets not impment the sheduled errands for now, we go to live tracking but as of now i have an idea, instead of sending link to track rider with can we not send a location pin t client only if the errand is in asigned and in transit and the location pin tracking stops when errand is comepleted
+
+> Good idea, but there's a limitation — WhatsApp can only send a static location pin (a fixed lat/lng snapshot), not a live updating one. So the pin would show where the rider 
+was at the moment the status changed, not their real-time position.
+
+For true live tracking you'd need the rider's app to continuously push their GPS coords to your backend, then the bot sends updated pins periodically.
+
+Two realistic options:
+
+A — Static pin on status change
+When agent marks order as Assigned or InTransit, bot sends the rider's last known location as a pin. Simple, works now, but not live.
+
+B — Periodic pin updates
+Rider's app pushes GPS to backend every X seconds → backend calls /status-update with coords → bot forwards a new pin to client. Actually live but needs backend + rider app 
+changes.
+
+Which fits better, or do you want to skip tracking entirely for now and move to the next feature?
+
+> we will go with option 2 but we will not implment it now we will ad it to the pedning ones, we move to  next the payment, i dont know how to imepment this coz as of now i have a working payment system throguh ncba bank so we not using mpesa and the payment endpoint needs the cliets own aces tokes
+
+> Got it, so the payment flow needs the client's own auth token (not the handler token) to hit the payment endpoint — which means the client needs to have an account and be 
+logged in via the app.
+
+A few questions to understand the flow:
+
+1. Does the NCBA payment endpoint accept a payment initiation call (like STK push style where client gets a prompt), or does the client have to manually pay through their app/
+bank?
+
+2. When a client places an order via WhatsApp, do they already have an account on the Fagi app, or can they order as a guest?
+
+3. What's the current payment flow — client places order, then pays cash, or is there an online payment step expected?
+
+This will help figure out if payment can even be triggered from the bot side or if it's better handled post-order through the app.
+
+> its uses prompt, clients usually puts there phone no on app and they are prompted they put pin then callback is sent thats used to determin if payment was succesful and , al
+l client who place errands through whatsapp have to have an account, if they dont have an account with the texting no they are ussally told to register thou app r website
+
+> So the flow would be:
+
+1. Client confirms order → order created → bot asks "Pay now or Cash?"
+2. Client picks "Pay Now" → backend triggers NCBA prompt to their phone → client enters PIN on their phone
+3. Backend callback confirms payment → bot sends "Payment confirmed ✅" or "Payment failed ❌"
+
+The blocker is step 2 needs the client's own access token from the Fagi app. Since they're on WhatsApp, they're not logged in.
+
+Two ways around this:
+
+A — Handler token triggers payment on behalf of client
+Your backend exposes an endpoint like POST /api/payments/initiate-for-client/ (similar to how create-for-client works) that the handler account can call with the client's 
+phone + order ID. Backend handles the auth internally.
+
+B — Send them a payment link
+After order is placed, send a deep link like https://fagierrands.com/pay/{order_id} — client taps it, opens in browser/app already pointed at their order, they authenticate 
+and pay there.
+
+Option A is cleanest for the WhatsApp flow but needs a backend change. Option B needs zero backend changes on the bot side.
+
+Which direction does your backend dev prefer?
+
+> option A needs alot of securoty audit so we can add that payment to pending also we will explore it
+
+> Makes sense, payment goes to pending. 
+
+Next up — 🌍 Language toggle (Swahili/English). Simple to implement since it's just Redis + swapping message templates. Want to tackle this one?
+
+> im more intrested in the LLM feature, this can be a game chnager if impmeneted right
+
+> Agreed, this is the biggest one. Let me think through how to implement it right.
+
+The idea
+Before hitting the state machine, pass the client's free text through an LLM. The LLM either:
+• Answers simple questions (rates, coverage area, how it works, etc.)
+• Or maps their intent to a bot action ("I want to send a package" → triggers booking flow)
+
+What it handles well
+• "How much does it cost to send from Westlands to Karen?" → LLM calculates/answers
+• "Nataka kutuma kitu CBD" → understands Swahili, routes to booking (kills the need for language toggle)
+• "Where are you located?" / "Do you deliver to Mombasa?" → FAQ answers
+• Typos, casual language, anything that doesn't match a button ID
+
+What it should NOT do
+• Replace the structured flow (pickup/delivery location, invoice) — keep those as-is
+• Handle order creation — that stays in the state machine
+
+Architecture
+Message arrives
+    ↓
+State == WELCOME_MENU and msg_type == text?
+    ↓ yes
+LLM triage → intent detection
+    ↓
+"book"     → set state, start flow
+"status"   → check orders
+"faq"      → LLM answers directly
+"agent"    → handoff
+"unknown"  → send welcome menu
+
+
+Which LLM? Options:
+• **Gemini Flash** — free tier, fast, you're already using Gemini
+• **OpenAI GPT-4o-mini** — cheap, very reliable
+• **Groq (Llama)** — free, extremely fast
+
+Which one do you have API access to?
+
+> 
