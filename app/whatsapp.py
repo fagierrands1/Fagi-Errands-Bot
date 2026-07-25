@@ -7,6 +7,13 @@ def _wa_headers() -> tuple[str, dict]:
     return url, {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
+async def mark_read(msg_id: str):
+    url, headers = _wa_headers()
+    payload = {"messaging_product": "whatsapp", "status": "read", "message_id": msg_id}
+    async with httpx.AsyncClient(timeout=5) as client:
+        await client.post(url, json=payload, headers=headers)
+
+
 async def send_image(to: str, media_id: str):
     url, headers = _wa_headers()
     payload = {"messaging_product": "whatsapp", "to": to, "type": "image", "image": {"id": media_id}}

@@ -10,7 +10,7 @@ from fastapi.responses import PlainTextResponse
 load_dotenv()
 
 from app.router import route, r as redis
-from app.whatsapp import send_message
+from app.whatsapp import send_message, mark_read
 
 app = FastAPI()
 
@@ -70,6 +70,10 @@ async def receive_webhook(request: Request):
     # Deduplicate — ignore if we already processed this message ID
     if msg_id and not redis.set(f"msgid:{msg_id}", "1", nx=True, ex=120):
         return PlainTextResponse(content="OK", status_code=200)
+
+    # Mark as read immediately — shows blue ticks before the bot replies
+    if msg_id:
+        await mark_read(msg_id)
 
     contact = value.get("contacts", [{}])[0]
     client_name = contact.get("profile", {}).get("name", phone)
