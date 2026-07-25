@@ -1,31 +1,52 @@
-from fastapi import FastAPI, Request, Query
-from fastapi.responses import PlainTextResponse
+import hashlib
+import hmac
 import os
+import traceback
+
 from dotenv import load_dotenv
-from router import route
-from whatsapp import send_message
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 
 load_dotenv()
 
+from app.router import route, r as redis
+from app.whatsapp import send_message
+
 app = FastAPI()
 
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "")
+APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "")  # Meta app secret for signature verification
+
+
+def _verify_signature(body: bytes, signature_header: str) -> bool:
+    """Reject requests not signed by Meta."""
+    if not APP_SECRET:
+        return True  # skip if not configured (dev mode)
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    expected = hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature_header[7:])
 
 
 @app.get("/webhook")
-async def verify_webhook(
-    hub_mode: str = Query(None, alias="hub.mode"),
-    hub_verify_token: str = Query(None, alias="hub.verify_token"),
-    hub_challenge: str = Query(None, alias="hub.challenge"),
-):
-    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
-        return PlainTextResponse(content=hub_challenge, status_code=200)
+async def verify_webhook(request: Request):
+    params = request.query_params
+    if params.get("hub.mode") == "subscribe" and params.get("hub.verify_token") == VERIFY_TOKEN:
+        return PlainTextResponse(content=params.get("hub.challenge", ""), status_code=200)
     return PlainTextResponse(content="Forbidden", status_code=403)
 
 
 @app.post("/webhook")
 async def receive_webhook(request: Request):
-    body = await request.json()
+    raw_body = await request.body()
+
+    if not _verify_signature(raw_body, request.headers.get("X-Hub-Signature-256", "")):
+        return PlainTextResponse(content="Forbidden", status_code=403)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return PlainTextResponse(content="Bad Request", status_code=400)
 
     if "entry" not in body or not body["entry"]:
         return PlainTextResponse(content="OK", status_code=200)
@@ -37,11 +58,14 @@ async def receive_webhook(request: Request):
 
     message = value["messages"][0]
     msg_id = message.get("id", "")
-    phone = message.get("from")
+    phone = message.get("from", "")
     msg_type = message.get("type")
 
+    # Reject obviously invalid phone numbers
+    if not phone or not phone.isdigit() or len(phone) < 7:
+        return PlainTextResponse(content="OK", status_code=200)
+
     # Deduplicate — ignore if we already processed this message ID
-    from router import r as redis
     if msg_id and not redis.set(f"msgid:{msg_id}", "1", nx=True, ex=120):
         return PlainTextResponse(content="OK", status_code=200)
 
@@ -51,31 +75,6 @@ async def receive_webhook(request: Request):
     try:
         await route(phone, msg_type, message, client_name)
     except Exception as e:
-        import traceback
         print(f"[ERROR] route() failed: {e}\n{traceback.format_exc()}")
 
     return PlainTextResponse(content="OK", status_code=200)
-
-
-# @app.post("/status-update")
-# async def status_update(request: Request):
-#     """
-#     Called by the backend when an order status changes.
-#     Expected payload: {"order_number": "ORD-123", "status": "Assigned"}
-#     """
-#     body = await request.json()
-#     order_number = body.get("order_number", "")
-#     new_status = body.get("status", "")
-#
-#     msg = STATUS_CLIENT_MSG.get(new_status)
-#     if not msg:
-#         return PlainTextResponse(content="OK", status_code=200)
-#
-#     client_phone = _get_order_phone(order_number)
-#     if not client_phone:
-#         print(f"[STATUS-UPDATE] No phone found for order {order_number}")
-#         return PlainTextResponse(content="OK", status_code=200)
-#
-#     await send_message(client_phone, msg)
-#     print(f"[STATUS-UPDATE] {order_number} → {new_status} → {client_phone}")
-#     return PlainTextResponse(content="OK", status_code=200)
