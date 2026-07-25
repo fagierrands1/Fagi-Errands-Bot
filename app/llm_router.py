@@ -38,20 +38,29 @@ async def triage(text: str) -> str:
             provider_name="OpenAI",
         )
 
+    if provider == "nvidia":
+        return await _triage_openai_compat(
+            text,
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=os.getenv("NVIDIA_API_KEY", ""),
+            model=os.getenv("NVIDIA_MODEL", "deepseek-ai/deepseek-v4-pro"),
+            provider_name="NVIDIA",
+        )
+
     # Default: Groq (production chain)
     from .llm import triage as _t
     return await _t(text)
 
 
 async def _triage_openai_compat(text: str, base_url: str, api_key: str, model: str, provider_name: str) -> str:
-    """Generic handler for any OpenAI-compatible API (DeepSeek, OpenAI, etc.)"""
-    import asyncio
+    """Generic handler for any OpenAI-compatible API (DeepSeek, OpenAI, NVIDIA NIM, etc.)"""
     from openai import AsyncOpenAI
     from .llm import SYSTEM_PROMPT
 
     text = text.strip()[:500]
     try:
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        extra = {"extra_body": {"chat_template_kwargs": {"thinking": False}}} if provider_name == "NVIDIA" else {}
         resp = await client.chat.completions.create(
             model=model,
             messages=[
@@ -60,6 +69,8 @@ async def _triage_openai_compat(text: str, base_url: str, api_key: str, model: s
             ],
             max_tokens=200,
             temperature=0.8,
+            top_p=0.95,
+            **extra,
         )
         result = resp.choices[0].message.content.strip()
         print(f"[LLM] provider={provider_name} model={model} intent={result!r:.60}")
