@@ -74,7 +74,12 @@ async def triage(text: str) -> str:
     """Returns ACTION:book | ACTION:status | ACTION:agent | or a plain chat reply string"""
     import asyncio
     text = text.strip()[:500]  # cap to prevent prompt injection via oversized input
-    for model in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+
+    # If a test model is configured, try it first — remove GROQ_TEST_MODEL to revert to production chain
+    test_model = os.getenv("GROQ_TEST_MODEL", "").strip()
+    model_chain = ([test_model] if test_model else []) + ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+
+    for model in model_chain:
         try:
             loop = asyncio.get_event_loop()
             resp = await loop.run_in_executor(None, lambda m=model: _get_client().chat.completions.create(
@@ -86,7 +91,9 @@ async def triage(text: str) -> str:
                 max_tokens=200,
                 temperature=0.8,
             ))
-            return resp.choices[0].message.content.strip()
+            result = resp.choices[0].message.content.strip()
+            print(f"[LLM] model={model} body={text!r:.60} intent={result!r:.60}")
+            return result
         except Exception as e:
             print(f"[LLM ERROR] {model}: {e}")
     return "Sorry, I'm having trouble right now. Please try again in a moment."
