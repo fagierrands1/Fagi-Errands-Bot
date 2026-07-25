@@ -111,27 +111,30 @@ async def calculate_pricing(pickup_lat: float, pickup_lng: float, delivery_lat: 
 
 
 async def get_client_orders(client_phone: str) -> list:
-    # Normalize: strip non-digits, ensure it's a plausible phone number
     client_phone = "".join(c for c in client_phone if c.isdigit())
     if len(client_phone) < 7:
         return []
-    headers = await _auth_headers()
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(
-            f"{_base()}/api/orders/",
-            params={"client_phone": client_phone},
-            headers=headers,
-        )
-        if resp.status_code == 401:
-            r.delete(TOKEN_KEY)
-            headers = await _auth_headers()
+    try:
+        headers = await _auth_headers()
+        async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.get(
                 f"{_base()}/api/orders/",
                 params={"client_phone": client_phone},
                 headers=headers,
             )
-        data = resp.json()
-        return data if isinstance(data, list) else []
+            if resp.status_code == 401:
+                r.delete(TOKEN_KEY)
+                headers = await _auth_headers()
+                resp = await client.get(
+                    f"{_base()}/api/orders/",
+                    params={"client_phone": client_phone},
+                    headers=headers,
+                )
+            data = resp.json()
+            return data if isinstance(data, list) else []
+    except Exception as e:
+        print(f"[get_client_orders ERROR] {e}")
+        return []
 
 
 async def get_order_status(order_id: int) -> dict:
